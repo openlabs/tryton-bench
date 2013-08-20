@@ -13,6 +13,9 @@ import requests
 import json
 
 
+#FIXME: kwargs not working
+
+
 class HttpClient:
     def __init__(self, url, database_name, user, passwd):
         self._url = '{}/{}'.format(url, database_name)

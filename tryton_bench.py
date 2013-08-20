@@ -17,6 +17,7 @@ from multiprocessing import Process
 from multiprocessing import Queue
 
 from tryton_rpc import HttpClient
+from requests import RequestException
 
 
 class Scenario:
@@ -70,7 +71,34 @@ def timeit(func):
     return f
 
 
-def blast_server(env, scenario_name, num, queue, completed):
+#NOTE: This has disadvantage of losing all progress stats made by worker
+def gracefully(func):
+    def push_to_queue(*args, **kwargs):
+        completed_q = kwargs.get('completed_q', args[-1])
+        progress_q = kwargs.get('progress_q', args[-2])
+        num = kwargs.get('num', args[2])
+        completed_q.put((num, 0, 0))
+        progress_q.put(0)
+
+    def f(*args, **kwargs):
+        result = 0
+        try:
+            result = func(*args, **kwargs)
+        except KeyboardInterrupt:
+            print "KeyboaradInterrup: Worker shutting down"
+            push_to_queue(*args, **kwargs)
+        except RequestException:
+            print "Worker shutting down. Error making requests."
+            push_to_queue(*args, **kwargs)
+        except Exception as e:
+            print "Worker crashed! ", e.message
+            push_to_queue(*args, **kwargs)
+        return result
+    return f
+
+
+@gracefully
+def blast_server(env, scenario_name, num, progress_q, completed_q):
     INTERVAL = num // 10
     scenario = Scenario(scenario_name)
     client = HttpClient(env.url, env.database, env.user, env.password)
@@ -84,9 +112,9 @@ def blast_server(env, scenario_name, num, queue, completed):
         else:
             good += 1
         if i % INTERVAL == 0:
-            queue.put(INTERVAL)
-    queue.put(num % INTERVAL)
-    completed.put((num, good, bad))
+            progress_q.put(INTERVAL)
+    progress_q.put(num % INTERVAL)
+    completed_q.put((num, good, bad))
     return num
 
 
