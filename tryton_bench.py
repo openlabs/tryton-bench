@@ -12,6 +12,7 @@
 
 import argparse
 import time
+import operator
 from multiprocessing import Process
 from multiprocessing import Queue
 
@@ -73,14 +74,19 @@ def blast_server(env, scenario_name, num, queue, completed):
     INTERVAL = num // 10
     scenario = Scenario(scenario_name)
     client = HttpClient(env.url, env.database, env.user, env.password)
+    good, bad = 0, 0
     for i in range(num):
         data = scenario.generate()
-        client.call(scenario.model(), scenario.method(),
+        status_code = client.call(scenario.model(), scenario.method(),
                 *data.get('args', []), **data.get('kwargs', {}))
+        if status_code >= 400 and status_code < 600:
+            bad += 1
+        else:
+            good += 1
         if i % INTERVAL == 0:
             queue.put(INTERVAL)
     queue.put(num % INTERVAL)
-    completed.put(1)
+    completed.put((num, good, bad))
     return num
 
 
@@ -142,13 +148,15 @@ def main():
             print "   {:{w1}d}%  ---  {:0.2f} seconds".format(
                     percentage, lap.elapsed(), w1=4)
 
-    print "\n"
-    print "  Successful requests    :  {}".format(lap.elapsed()) #TODO
-    print "  Failed requests        :  {}".format(lap.elapsed()) #TODO
-    print "  Total time taken       :  {:0.2f} seconds".format(lap.elapsed())
-
+    aggregate = [0, 0, 0]  # [num, good, bad]
     for i in range(args.connections):
         pool[i].join()
+        aggregate = map(operator.add, aggregate, completed.get())
+
+    print "\n"
+    print "  Successful requests    :  {}".format(aggregate[1])
+    print "  Failed requests        :  {}".format(aggregate[2])
+    print "  Total time taken       :  {:0.2f} seconds".format(lap.elapsed())
 
 
 if __name__ == '__main__':

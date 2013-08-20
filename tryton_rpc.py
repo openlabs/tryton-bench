@@ -41,8 +41,7 @@ class HttpClient:
             'method': method,
             'id': None
         })
-        requests.post(self._url, payload)
-        return True
+        return requests.post(self._url, payload).status_code
 
 
 if __name__ == "__main__":
