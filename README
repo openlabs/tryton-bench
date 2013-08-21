@@ -1,0 +1,5 @@
+tryton_bench: Tryton JSON RPC benchmark
+=======================================
+
+A simple command line tool to benchmark Tryton JSON RPC servers by sending
+several concurrent requests and mesuring time and successful/failed responses.

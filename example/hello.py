@@ -15,19 +15,6 @@ MODEL = 'hello.hello'
 METHOD = 'create'
 
 
-"""
-def generate():
-    return {
-        'kwargs': {
-            'vlist': [{
-                'name': str(uuid.uuid1()),
-                'greeting': str(uuid.uuid1()),
-            }],
-        },
-    }
-"""
-
-
 def generate():
     return {
         'args': [

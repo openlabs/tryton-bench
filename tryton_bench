@@ -11,16 +11,57 @@
 
 
 import argparse
-import time
+import json
 import operator
+import os
+import requests
+import sys
+import time
 from multiprocessing import Process
 from multiprocessing import Queue
-
-from tryton_rpc import HttpClient
 from requests import RequestException
 
 
+class HttpClient:
+    """HTTP Client to make JSON RPC requests to Tryton server.
+    User is logged in when an object is created.
+    """
+    def __init__(self, url, database_name, user, passwd):
+        self._url = '{}/{}'.format(url, database_name)
+        self._user = user
+        self._passwd = passwd
+        self._login()
+
+    def _login(self):
+        payload = json.dumps({
+            'params': [self._user, self._passwd],
+            'jsonrpc': "2.0",
+            'method': 'common.login',
+            'id': None
+        })
+        result = requests.post(self._url, payload)
+        self._session = json.loads(result.text)['result']
+        return self._session
+
+    def call(self, model, method, *args):
+        """RPC Call
+        """
+        method = '{}.{}.{}'.format('model', model, method)
+        payload = json.dumps({
+            'params': [
+                self._session[0],
+                self._session[1],
+            ] + list(args) + [{}],
+            'method': method,
+            'id': None
+        })
+        return requests.post(self._url, payload).status_code
+
+
 class Scenario:
+    """Takes a module name, loads it and loads the test case
+    defined in it, as well as generate datasets.
+    """
     def __init__(self, module_name):
         self.module = __import__(module_name)
 
@@ -32,17 +73,6 @@ class Scenario:
 
     def generate(self):
         return self.module.generate()
-
-
-class Timer(object):
-    def __enter__(self):
-        self.start = time.time()
-
-    def __exit__(self, type, value, traceback):
-        self.finish = time.time()
-
-    def duration(self):
-        return self.finish - self.start
 
 
 class Lap:
@@ -59,19 +89,10 @@ class Lap:
         return self.data[-1] - self.data[0]
 
 
-def timeit(func):
-    timer = Timer()
-
-    def f(*args, **kwargs):
-        with timer:
-            result = func(*args, **kwargs)
-        duration = timer.duration()
-        return (result, duration)
-
-    return f
-
-
-#NOTE: This has disadvantage of losing all progress stats made by worker
+#NOTE: This has disadvantage of losing all progress stats made by worker.
+#      But for a very little while, lets live with that.
+#TODO: Let progress queue also send number of successful and failed stats, so
+#      that we don't lose information.
 def gracefully(func):
     def push_to_queue(*args, **kwargs):
         completed_q = kwargs.get('completed_q', args[-1])
@@ -99,6 +120,8 @@ def gracefully(func):
 
 @gracefully
 def blast_server(env, scenario_name, num, progress_q, completed_q):
+    """Worker method to make requests serially
+    """
     INTERVAL = num // 10
     scenario = Scenario(scenario_name)
     client = HttpClient(env.url, env.database, env.user, env.password)
@@ -149,8 +172,13 @@ def main():
     print "  Concurrent connections :  {}".format(args.connections)
     print "\n"
 
+    # divide task almost equally among workers
     chunk_size = args.requests // args.connections
     pool = []
+
+    # Progress keep tracks of number of requests served til now by worker. 
+    # Completed is used as a kind of semaphore for the loop for polling
+    # progress.
     progress, completed = Queue(), Queue(args.connections)
 
     lap = Lap()
@@ -164,6 +192,7 @@ def main():
         pool.append(p)
         p.start()
 
+    # track progress
     total = 0
     last_percentage, percentage = 0, 0
     print "  Percentage of requests served - "
@@ -176,6 +205,7 @@ def main():
             print "   {:{w1}d}%  ---  {:0.2f} seconds".format(
                     percentage, lap.elapsed(), w1=4)
 
+    # all workers are finished now, but we still gotta join
     aggregate = [0, 0, 0]  # [num, good, bad]
     for i in range(args.connections):
         pool[i].join()
@@ -188,4 +218,5 @@ def main():
 
 
 if __name__ == '__main__':
+    sys.path.append(os.getcwd())
     main()
