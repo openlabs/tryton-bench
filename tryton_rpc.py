@@ -2,7 +2,7 @@
 """
     tryton_rpc
 
-    Easy to use JSON RPC client for Tryton based on pyjsonrpc
+    Easy to use JSON RPC client for Tryton
 
     :copyright: (c) 2013 by Openlabs Technologies & Consulting (P) Limited
     :license: Modified BSD, see LICENSE for more details.
@@ -11,9 +11,6 @@
 
 import requests
 import json
-
-
-#FIXME: kwargs not working
 
 
 class HttpClient:
@@ -34,13 +31,13 @@ class HttpClient:
         self._session = json.loads(result.text)['result']
         return self._session
 
-    def call(self, model, method, *args, **kwargs):
+    def call(self, model, method, *args):
         method = '{}.{}.{}'.format('model', model, method)
         payload = json.dumps({
             'params': [
                 self._session[0],
                 self._session[1],
-            ] + list(args) + [kwargs],
+            ] + list(args) + [{}],
             'method': method,
             'id': None
         })
@@ -49,7 +46,5 @@ class HttpClient:
 
 if __name__ == "__main__":
     c = HttpClient("http://localhost:8000", "tryton_rpc", "admin", "12345")
-    #c.call('hello.hello', 'create',
-            #[{'name': "Vishsh2", "greeting": "Sup?"}])
-    #c.call('hello.hello', 'create',
-            #vlist=[{'name': "Vishsh2", "greeting": "Sup?"}])
+    c.call('hello.hello', 'create',
+            [{'name': "Vishsh2", "greeting": "Sup?"}])
